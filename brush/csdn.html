@@ -1,0 +1,1166 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <link rel="canonical" href="https://blog.csdn.net/zy_281870667/article/details/80558568"/>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta name="referrer" content="always">
+    <meta name="description" content="    对“锁”大家肯定都不陌生，锁是针对多线程情况下对资源访问的控制，初学java时候，就知道synchronize和lock，synchronize是重量级锁，lock是轻量级，锁巴拉巴拉。。。，但是都是针对单个jvm来说的，现在稍微大点的网站都是多台服务器，通过nginx等负载均衡到多个服务器节点，这样的话，就得使用分布式锁了，常见的分布式锁有基于redis或者zookeeper，这里讨论下..." />
+    <meta name="keywords" content="" />
+    <meta http-equiv="Cache-Control" content="no-siteapp" /><link rel="alternate" media="handheld" href="#" />
+    <meta name="shenma-site-verification" content="5a59773ab8077d4a62bf469ab966a63b_1497598848">
+    <script src="https://csdnimg.cn/release/phoenix/vendor/tingyun/tingyun-rum-blog.js"></script>
+
+    <link href="https://csdnimg.cn/public/favicon.ico" rel="SHORTCUT ICON">
+    <title>分布式锁之redis实现 - CSDN博客</title>
+
+            <link rel="stylesheet" href="https://csdnimg.cn/release/phoenix/template/css/detail-60a2c245da.min.css">
+        <link rel="stylesheet" href="https://csdnimg.cn/release/phoenix/themes/skin-blackboard/skin-blackboard-916eb1673a.min.css">
+
+    <script type="text/javascript">
+        var username = "zy_281870667";
+        var blog_address = "https://blog.csdn.net/zy_281870667";
+        var static_host = "https://csdnimg.cn/release/phoenix/";
+        var currentUserName = "zy_281870667";
+        var isShowAds = true;
+        var isOwner = true;
+        var loginUrl = "https://passport.csdn.net/account/login?from=https://blog.csdn.net/zy_281870667/article/details/80558568"
+        var blogUrl = "https://blog.csdn.net/";
+        var curSkin = "skin-blackboard";
+    </script>
+    <script type="text/javascript">
+        // Traffic Stats of the entire Web site By baidu
+        var _hmt = _hmt || [];
+        (function() {
+            var hm = document.createElement("script");
+            hm.src = "https://hm.baidu.com/hm.js?6bcd52f51e9b3dce32bec4a3997715ac";
+            var s = document.getElementsByTagName("script")[0];
+            s.parentNode.insertBefore(hm, s);
+        })();
+        // Traffic Stats of the entire Web site By baidu end
+    </script>
+    <script src="https://csdnimg.cn/public/common/libs/jquery/jquery-1.9.1.min.js" type="text/javascript"></script>
+    <script src="https://csdnimg.cn/rabbit/exposure-click/main-1.0.6.js"></script>
+        <script type="text/javascript" src="https://csdnimg.cn/pubfooter/js/tracking-1.0.2.js" charset="utf-8"></script>
+        <link rel="stylesheet" href="https://csdnimg.cn/public/sandalstrap/1.3/css/sandalstrap.min.css">
+    <style>
+        .MathJax, .MathJax_Message, .MathJax_Preview{
+            display: none
+        }
+    </style>
+</head>
+<body>
+    <link rel="stylesheet" href="https://csdnimg.cn/public/common/toolbar/content_toolbar_css/content_toolbar.css">
+    <script id="toolbar-tpl-scriptId" src="https://csdnimg.cn/public/common/toolbar/js/content_toolbar.js" type="text/javascript" domain="https://blog.csdn.net/"></script>
+    <script src="https://csdnimg.cn/public/sandalstrap/1.3/fonts/csdnc/csdnc.js"></script><link rel="stylesheet" href="https://csdnimg.cn/release/phoenix/template/css/blog_code-c3a0c33d5c.css">
+<link rel="stylesheet" href="https://csdnimg.cn/release/phoenix/vendor/pagination/paging.css">
+<script type="text/javascript" src="//static.mediav.com/js/mvf_news_feed.js"></script>
+
+<header>
+	<div class="container d-flex clearfix">
+		<div class="title-box">
+			<h2 class="title-blog">
+				<a href="https://blog.csdn.net/zy_281870667">卖克的专栏</a>
+			</h2>
+			<p class="description">好记性不如烂笔头</p>
+		</div>
+		<div class="opt-box d-flex justify-content-end">
+			<a class="btn btn-sm" href="https://blog.csdn.net/zy_281870667/rss/list">
+					<svg class="icon" aria-hidden="true">
+						<use xlink:href="#csdnc-rss"></use>
+					</svg>RSS订阅</a>
+						<a class="btn btn-sm" href="https://mp.csdn.net/postlist">
+				<svg class="icon" aria-hidden="true">
+					<use xlink:href="#csdnc-cog"></use>
+				</svg>管理博客</a>
+					</div>
+	</div>
+</header><script src="https://dup.baidustatic.com/js/ds.js"></script>
+<div class="container clearfix pt0" id="mainBox">
+    <main>
+        <div class="blog-content-box">
+	<div class="article-title-box">
+			<span class="article-type type-1 float-left">原</span>		<h1 class="title-article">分布式锁之redis实现</h1>
+	</div>
+	<div class="article-info-box">
+		<div class="article-bar-top d-flex">
+												<span class="time">2018年06月04日 00:02:19</span>
+			<div class="float-right">
+				<span class="read-count">阅读数：58</span>
+								<a class="href-article-edit" href="https://mp.csdn.net/postedit/80558568">编辑</a>
+											</div>
+		</div>
+	</div>
+	<article>
+		<div id="article_content" class="article_content clearfix csdn-tracking-statistics" data-pid="blog"  data-mod=popu_307  data-dsm = "post" >
+                    <link rel="stylesheet" href="https://csdnimg.cn/release/phoenix/template/css/htmledit_views-0a60691e80.css" />
+            <div class="htmledit_views">
+                <p>    对“锁”大家肯定都不陌生，锁是针对多线程情况下对资源访问的控制，初学java时候，就知道synchronize和lock，synchronize是重量级锁，lock是轻量级的锁，巴拉巴拉。。。但是它们两都是针对单个jvm来说的，现在稍微大点的网站都是多台服务器，通过nginx等负载均衡到多个服务器节点，这样的话，就得使用分布式锁了，常见的分布式锁有基于redis或者zookeeper，这里讨论下基于redis实现分布式锁及其会遇到的问题。</p><h1> 1.0 setnx</h1><p>根据redis提供的setnx命令，可以当做互斥锁来使用，成功了会返回1，失败返回0，然后做一些操作，最后删除key，伪代码如下：</p><pre class="java">if(1 == setnx(key,value)){
+    dosomething;
+    del(key);
+}</pre><p>考虑的更完善点呢，可以加入“锁超时”的情况，假如一个获得锁权限的节点，因为一些其他因素导致迟迟没有执行del(key)的操作，导致锁无法释放，会阻塞依赖该key的业务流程。伪代码如下：</p><pre class="java">if(1 == setnx(key,value)){
+    expire(key,timeOutSecond)
+    dosomething;
+    del(key);
+}</pre><p>加入了锁超时的代码，看似是“很完善”了，但是，还是有一些问题的，setnx和expire<span style="color:#ff0000;">不是原子性</span>、del会<span style="color:#ff0000;">误删</span><span style="color:#000000;">。</span></p><h1><span style="color:#000000;"> 2.0 原子性和误删操作</span></h1><h2> 2.1 操作的原子性</h2><p>    先说下原子性，在1.0中的代码，setnx和expire不是原子性，极端情况，第一行代码，setnx(key,value)执行完之后，再执行第二行expire的时候，节点GG思密达了，第二行代码指令就没有抵达redis，那这样的话，之前设置的key就永恒不朽了。</p><p>    如何处理这个问题呢？redis 2.6.12及其以上版本，提供了原子性操作的api：</p><pre class="python">set(key,value,ex second,nx)</pre><p>set四个参数的这种等于 setnx+expire两行代码，还保证了原子性</p><p>    这里吐槽一下啊，redis不仅提供了setnx、还提供了setex，还还提供了psetex，一个set(key,value,ex|px second,nx)命令不就搞定了吗，弄这么多干嘛呢？</p><h2>2.2 误删key</h2><p>    再说下误删操作，还是1.0的伪代码，假如线程A获得了锁，超时时间是30秒，假如线程A在30秒内未执行完成，则锁超时，锁会被其他线程获取；假如获取到锁的是线程B，线程B在执行代码块的过程中，线程A终于执行完了并删除了锁，那这时就是误删了，这个时间线程A删的锁其实是线程B的锁了。</p><p>    如何处理这种误删操作呢？可以把当前线程的线程ID作为value，在删除锁之前比对下key的value是不是当前线程的线程ID，如果是，才会去删除锁。伪代码如下：</p><pre class="java">String currendThreadId = Thread.currendThread.getId();
+if("ok".equals(set(key,currendThreadId,ex second,nx))){
+  doSomething;
+
+  if(currendThreadId.equals(get(key))){
+      del(key)
+   }
+}</pre><br /><p>上面的代码，其实还是隐含一个问题--判断锁的值和删除锁，不是原子性，要达到效果，redis的现成api是没有的，得需要使用redis脚本了</p><pre class="java">String script_lua = "if (redis.call('get',KEYS[1]) == redis.call('get',ARGV[1])) then return redis.call('del',KEYS[1]) else return 0 end";
+redisClient.eval(script_lua,Collections.singletoList(key),Collections.singletoList(currendThreadId));</pre><p>这行代码的效果等同于在redis-cli中执行</p><p><img src="https://img-blog.csdn.net/20180603233048739" alt="" /><br /></p><h2> 2.3 存在并发可能性</h2><p>   虽然使用脚本的方式可以有效防止误删的操作，但是还是会有并发问题--线程A和线程B同时都在操作，这显然不合理，为解决这个问题，那只有限制B不能进入了。</p><p>    这里就需要引入一个“守护线程”的东西了，守护线程会在线程A即将过期的时候，去主动给线程A“续命”，当线程A执行完毕，再关掉守护线程；即使线程A所在的节点GG思密达了，因为线程A和守护线程是在一个节点的，守护线程也会GG的，锁到期后，会自动释放。</p><p>   到这里才算是把redis的分布式锁比较全面的说完。</p>            </div>
+                </div>
+			</article>
+
+		<div class="article-bar-bottom">
+				<div class="article-copyright">
+			版权声明：本文为博主原创文章，未经博主允许不得转载。			https://blog.csdn.net/zy_281870667/article/details/80558568		</div>
+									</div>
+
+	<!-- !empty($pre_next_article[0]) -->
+		</div>
+<script>
+    $(".MathJax").remove();
+</script>
+
+<script type="text/javascript" src="https://static-blog.csdn.net/mdeditor/public/res/bower-libs/MathJax/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script type="text/x-mathjax-config">
+    MathJax.Hub.Config({
+			"HTML-CSS": {
+					linebreaks: { automatic: true, width: "94%container" },
+					imageFont: null
+			},
+			tex2jax: {
+				preview: "none"
+			},
+			mml2jax: {
+				preview: 'none'
+			}
+	});
+</script>
+<script>
+	(function(){
+		var btnReadmore = $("#btn-readmore");
+		if(btnReadmore.length>0){
+			var winH = $(window).height();
+			var articleBox = $("div.article_content");
+			var artH = articleBox.height();
+			if(artH > winH*2){
+				articleBox.css({
+					'height':winH*2+'px',
+					'overflow':'hidden'
+				})
+				btnReadmore.click(function(){
+					articleBox.removeAttr("style");
+					$(this).parent().remove();
+				})
+			}else{
+				btnReadmore.parent().remove();
+			}
+		}
+	})()
+</script>        <div class="edu-promotion"></div>
+<script type="text/javascript">
+	var edu_ad_is_big_data = 0;
+	var edu_ad_id_mapping = {"0":["https:\/\/edu.csdn.net\/sp\/blog.php?type=ai1","https:\/\/edu.csdn.net\/sp\/blog.php?type=python1"],"1":["https:\/\/edu.csdn.net\/sp\/blog.php?type=bigdata1","https:\/\/edu.csdn.net\/sp\/blog.php?type=web1","https:\/\/edu.csdn.net\/sp\/blog.php?type=gcit","https:\/\/edu.csdn.net\/sp\/blog.php?type=web1","https:\/\/edu.csdn.net\/sp\/blog.php?type=web1","https:\/\/edu.csdn.net\/sp\/blog.php?type=bigdata1","https:\/\/edu.csdn.net\/sp\/blog.php?type=bigdata1"],"8":["https:\/\/edu.csdn.net\/sp\/blog.php?type=bigdata1","https:\/\/edu.csdn.net\/sp\/blog.php?type=gcit"],"2":["https:\/\/edu.csdn.net\/sp\/blog.php?type=bigdata1","https:\/\/edu.csdn.net\/sp\/blog.php?type=python1"],"3":["https:\/\/edu.csdn.net\/sp\/blog.php?type=ai1","https:\/\/edu.csdn.net\/sp\/blog.php?type=bigdata1","https:\/\/edu.csdn.net\/sp\/blog.php?type=gcit","https:\/\/edu.csdn.net\/sp\/blog.php?type=bigdata1","https:\/\/edu.csdn.net\/sp\/blog.php?type=bigdata1","https:\/\/edu.csdn.net\/sp\/blog.php?type=bigdata1"],"6":["https:\/\/edu.csdn.net\/sp\/blog.php?type=bigdata1","https:\/\/edu.csdn.net\/sp\/blog.php?type=ai1","https:\/\/edu.csdn.net\/sp\/blog.php?type=gcit"],"12":["https:\/\/edu.csdn.net\/sp\/blog.php?type=bigdata1","https:\/\/edu.csdn.net\/sp\/blog.php?type=ai1","https:\/\/edu.csdn.net\/sp\/blog.php?type=gcit"],"14":["https:\/\/edu.csdn.net\/sp\/blog.php?type=web1","https:\/\/edu.csdn.net\/sp\/blog.php?type=python1","https:\/\/edu.csdn.net\/sp\/blog.php?type=gcweb","https:\/\/edu.csdn.net\/sp\/blog.php?type=web1","https:\/\/edu.csdn.net\/sp\/blog.php?type=web1"],"15":["https:\/\/edu.csdn.net\/sp\/blog.php?type=ai1","https:\/\/edu.csdn.net\/sp\/blog.php?type=bigdata1","https:\/\/edu.csdn.net\/sp\/blog.php?type=gcjg","https:\/\/edu.csdn.net\/sp\/blog.php?type=bigdata1","https:\/\/edu.csdn.net\/sp\/blog.php?type=bigdata1"],"16":["https:\/\/edu.csdn.net\/sp\/blog.php?type=web1","https:\/\/edu.csdn.net\/sp\/blog.php?type=python1"],"28":["https:\/\/edu.csdn.net\/sp\/blog.php?type=ai1","https:\/\/edu.csdn.net\/sp\/blog.php?type=python1","https:\/\/edu.csdn.net\/sp\/blog.php?type=gcai","https:\/\/edu.csdn.net\/sp\/blog.php?type=ai1","https:\/\/edu.csdn.net\/sp\/blog.php?type=python1"],"29":["https:\/\/edu.csdn.net\/sp\/blog.php?type=bigdata1","https:\/\/edu.csdn.net\/sp\/blog.php?type=ai1"],"30":["https:\/\/edu.csdn.net\/sp\/blog.php?type=python1","https:\/\/edu.csdn.net\/sp\/blog.php?type=ai1"],"32":["https:\/\/edu.csdn.net\/sp\/blog.php?type=bigdata1","https:\/\/edu.csdn.net\/sp\/blog.php?type=python1","https:\/\/edu.csdn.net\/sp\/blog.php?type=gcaq"],"33":["https:\/\/edu.csdn.net\/sp\/blog.php?type=bigdata1","https:\/\/edu.csdn.net\/sp\/blog.php?type=ai1","https:\/\/edu.csdn.net\/sp\/blog.php?type=gccxrs","https:\/\/edu.csdn.net\/sp\/blog.php?type=bigdata1","https:\/\/edu.csdn.net\/sp\/blog.php?type=bigdata1"],"35":["https:\/\/edu.csdn.net\/sp\/blog.php?type=ai1","https:\/\/edu.csdn.net\/sp\/blog.php?type=bigdata1","https:\/\/edu.csdn.net\/sp\/blog.php?type=gcit"],"37":["https:\/\/edu.csdn.net\/sp\/blog.php?type=web1","https:\/\/edu.csdn.net\/sp\/blog.php?type=python1"],"7":["https:\/\/edu.csdn.net\/sp\/blog.php?type=bigdata1","https:\/\/edu.csdn.net\/sp\/blog.php?type=web1","https:\/\/edu.csdn.net\/sp\/blog.php?type=gcit","https:\/\/edu.csdn.net\/sp\/blog.php?type=bigdata1","https:\/\/edu.csdn.net\/sp\/blog.php?type=bigdata1","https:\/\/edu.csdn.net\/sp\/blog.php?type=web1","https:\/\/edu.csdn.net\/sp\/blog.php?type=web1"],"17":["https:\/\/edu.csdn.net\/sp\/blog.php?type=bigdata1","https:\/\/edu.csdn.net\/sp\/blog.php?type=ai1"],"34":["https:\/\/edu.csdn.net\/sp\/blog.php?type=bigdata1","https:\/\/edu.csdn.net\/sp\/blog.php?type=python1","https:\/\/edu.csdn.net\/sp\/blog.php?type=gcbt"],"36":["https:\/\/edu.csdn.net\/sp\/blog.php?type=bigdata1","https:\/\/edu.csdn.net\/sp\/blog.php?type=ai1","https:\/\/edu.csdn.net\/sp\/blog.php?type=gcit"],"31":["https:\/\/edu.csdn.net\/sp\/blog.php?type=python1","https:\/\/edu.csdn.net\/sp\/blog.php?type=bigdata1","https:\/\/edu.csdn.net\/sp\/blog.php?type=gcit"],"19":["https:\/\/edu.csdn.net\/sp\/blog.php?type=bigdata1","https:\/\/edu.csdn.net\/sp\/blog.php?type=gcit"],"20":["https:\/\/edu.csdn.net\/sp\/blog.php?type=bigdata1","https:\/\/edu.csdn.net\/sp\/blog.php?type=gcit"]};
+</script>        <a id="commentBox"></a>
+<div class="comment-box">
+	  	<div class="comment-edit-box d-flex">
+		<a id="commentsedit"></a>
+		<div class="user-img">
+			<img src="https://avatar.csdn.net/F/F/3/3_zy_281870667.jpg">
+		</div>
+		<form id="commentform">
+			<input type="hidden" id="comment_replyId">
+			<textarea class="comment-content" name="comment_content" id="comment_content" placeholder="想对作者说点什么"></textarea>
+			<div class="opt-box"> <!-- d-flex -->
+				<div id="ubbtools" class="add_code">
+					<a href="#insertcode" code="code" target="_self"><i class="icon iconfont icon-daima"></i></a>
+				</div>
+				<input type="hidden" id="comment_replyId" name="comment_replyId">
+				<input type="hidden" id="comment_userId" name="comment_userId" value="">
+				<input type="hidden" id="commentId" name="commentId" value="">
+				<div style="display: none;" class="csdn-tracking-statistics tracking-click" data-mod="popu_384"><a href="#" target="_blank" class="comment_area_btn">发表评论</a></div>
+				<div class="dropdown" id="myDrap">
+					<a class="dropdown-face d-flex align-items-center" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">
+					<div class="txt-selected text-truncate">添加代码片</div>
+					<svg class="icon d-block" aria-hidden="true">
+						<use xlink:href="#csdnc-triangledown"></use>
+					</svg>
+					</a>
+					<ul class="dropdown-menu" id="commentCode" aria-labelledby="drop4">
+						<li><a data-code="html">HTML/XML</a></li>
+						<li><a data-code="objc">objective-c</a></li>
+						<li><a data-code="ruby">Ruby</a></li>
+						<li><a data-code="php">PHP</a></li>
+						<li><a data-code="csharp">C</a></li>
+						<li><a data-code="cpp">C++</a></li>
+						<li><a data-code="javascript">JavaScript</a></li>
+						<li><a data-code="python">Python</a></li>
+						<li><a data-code="java">Java</a></li>
+						<li><a data-code="css">CSS</a></li>
+						<li><a data-code="sql">SQL</a></li>
+						<li><a data-code="plain">其它</a></li>
+					</ul>
+				</div>
+				<div class="right-box">
+					<span id="tip_comment" class="tip">还能输入<em>1000</em>个字符</span>
+					<input type="submit" class="btn btn-sm btn-red btn-comment" value="发表评论">
+				</div>
+			</div>
+		</form>
+	</div>
+			<div class="comment-list-container">
+		<a id="comments"></a>
+		<div class="comment-list-box">
+		</div>
+		<div id="commentPage" class="pagination-box d-none"></div>
+		<div class="opt-box text-center">
+			<button class="btn btn-sm btn-link-blue" id="btnMoreComment"></button>
+		</div>
+	</div>
+</div>        <div class="recommend-box">
+            		<div class="recommend-item-box csdn-tracking-statistics" data-mod="popu_614" data-poputype="feed"  data-feed-show="false"  data-dsm="post">
+		<h4 class="text-truncate">
+			<a href="https://blog.csdn.net/qq_18860653/article/details/54907247" target="_blank" strategy="BlogCommendFromQuerySearch_0">
+				基于<em>redis</em>的<em>分布式锁</em>的<em>实现</em>			</a>
+		</h4>
+		<p class="content">
+			<a href="https://blog.csdn.net/qq_18860653/article/details/54907247" target="_blank" >
+				之前一直对<em>分布式锁</em>有所思考。一直觉得现在高性能的<em>redis</em>是个不错的选择；
+关于<em>分布式锁</em>的思考
+
+
+今天也尝试着写了一个基于<em>redis</em>的<em>分布式锁</em>工具
+LockUtil.java
+package yyf...			</a>
+		</p>
+		<div class="info-box d-flex align-content-center">
+			<p>
+				<a class="avatar" src="https://blog.csdn.net/qq_18860653" title="qq_18860653" target="_blank">
+					<img src="https://avatar.csdn.net/4/4/9/3_qq_18860653.jpg" alt="qq_18860653" class="avatar-pic">
+					<span class="name">qq_18860653</span>
+				</a>
+			</p>
+			<p>
+				<span class="date">2017-02-07 10:51:09</span>
+			</p>
+			<p>
+				<span class="read-num">阅读数：2591</span>
+			</p>
+		</div>
+	</div>
+					<div class="recommend-item-box csdn-tracking-statistics" data-mod="popu_614" data-poputype="feed"  data-feed-show="false"  data-dsm="post">
+		<h4 class="text-truncate">
+			<a href="https://blog.csdn.net/ljinshuan/article/details/72025282" target="_blank" strategy="BlogCommendFromQuerySearch_1">
+				基于<em>Redis</em><em>实现</em>的<em>分布式锁</em>			</a>
+		</h4>
+		<p class="content">
+			<a href="https://blog.csdn.net/ljinshuan/article/details/72025282" target="_blank" >
+				基于<em>Redis</em>的<em>分布式锁</em><em>实现</em>背景
+根据<em>redis</em>的setnx命令<em>实现</em>只有一个客户端可以拿到锁；
+<em>Redis</em>sonLock的<em>分布式锁</em><em>实现</em>使用了lua脚本，这里提供一种不适用脚本<em>实现</em>的方法；
+基本<em>实现</em>
+使...			</a>
+		</p>
+		<div class="info-box d-flex align-content-center">
+			<p>
+				<a class="avatar" src="https://blog.csdn.net/ljinshuan" title="ljinshuan" target="_blank">
+					<img src="https://avatar.csdn.net/0/F/1/3_ljinshuan.jpg" alt="ljinshuan" class="avatar-pic">
+					<span class="name">ljinshuan</span>
+				</a>
+			</p>
+			<p>
+				<span class="date">2017-05-14 16:22:14</span>
+			</p>
+			<p>
+				<span class="read-num">阅读数：731</span>
+			</p>
+		</div>
+	</div>
+								<div class="recommend-item-box recommend-ad-box" id="ad1"></div>
+				<script>
+				  var width = $("div.recommend-box").outerWidth() - 48;
+					NEWS_FEED({
+						w: width,
+						h : 90,
+						showid : 'GNKXx7',
+						placeholderId: "ad1",
+						inject : 'define',
+						define : {
+							imagePosition : 'right',
+							imageBorderRadius : 0,
+							imageWidth: 120,
+							imageHeight: 90,
+							imageFill : 'clip',
+							displayImage : true,
+							displayTitle : true,
+							titleFontSize: 20,
+							titleFontColor: '#333',
+							titleFontFamily : 'Microsoft Yahei',
+							titleFontWeight: 'bold',
+							titlePaddingTop : 0,
+							titlePaddingRight : 0,
+							titlePaddingBottom : 10,
+							titlePaddingLeft : 0,
+							displayDesc : true,
+							descFontSize: 14,
+							descFontColor: '#6b6b6b',
+							descFontFamily : 'Microsoft Yahei',
+							paddingTop : 0,
+							paddingRight : 0,
+							paddingBottom : 0,
+							paddingLeft : 0,
+							backgroundColor: '#fff',
+							hoverColor: '#ca0c16'
+						}
+					})
+				</script>
+
+
+				<div class="recommend-item-box csdn-tracking-statistics" data-mod="popu_614" data-poputype="feed"  data-feed-show="false"  data-dsm="post">
+		<h4 class="text-truncate">
+			<a href="https://blog.csdn.net/u010359884/article/details/50310387" target="_blank" strategy="BlogCommendFromQuerySearch_2">
+				基于<em>redis</em><em>分布式锁</em><em>实现</em>“秒杀”			</a>
+		</h4>
+		<p class="content">
+			<a href="https://blog.csdn.net/u010359884/article/details/50310387" target="_blank" >
+				最近在项目中遇到了类似“秒杀”的业务场景，在本篇博客中，我将用一个非常简单的demo，阐述<em>实现</em>所谓“秒杀”的基本思路。
+
+
+
+业务场景
+
+所谓秒杀，从业务角度看，是短时间内多个用户“争抢”资源，这里的...			</a>
+		</p>
+		<div class="info-box d-flex align-content-center">
+			<p>
+				<a class="avatar" src="https://blog.csdn.net/u010359884" title="u010359884" target="_blank">
+					<img src="https://avatar.csdn.net/C/6/D/3_u010359884.jpg" alt="u010359884" class="avatar-pic">
+					<span class="name">u010359884</span>
+				</a>
+			</p>
+			<p>
+				<span class="date">2015-12-18 08:15:51</span>
+			</p>
+			<p>
+				<span class="read-num">阅读数：54361</span>
+			</p>
+		</div>
+	</div>
+					<div class="recommend-item-box csdn-tracking-statistics" data-mod="popu_614" data-poputype="feed"  data-feed-show="false"  data-dsm="post">
+		<h4 class="text-truncate">
+			<a href="https://blog.csdn.net/haitunlianren/article/details/74059761" target="_blank" strategy="BlogCommendFromQuerySearch_3">
+				使用<em>redis</em>和zookeeper<em>实现</em><em>分布式锁</em>			</a>
+		</h4>
+		<p class="content">
+			<a href="https://blog.csdn.net/haitunlianren/article/details/74059761" target="_blank" >
+				<em>redis</em>和zookeeper<em>实现</em><em>分布式锁</em>			</a>
+		</p>
+		<div class="info-box d-flex align-content-center">
+			<p>
+				<a class="avatar" src="https://blog.csdn.net/haitunlianren" title="haitunlianren" target="_blank">
+					<img src="https://avatar.csdn.net/D/D/4/3_haitunlianren.jpg" alt="haitunlianren" class="avatar-pic">
+					<span class="name">haitunlianren</span>
+				</a>
+			</p>
+			<p>
+				<span class="date">2017-07-01 14:18:21</span>
+			</p>
+			<p>
+				<span class="read-num">阅读数：724</span>
+			</p>
+		</div>
+	</div>
+					<div class="recommend-item-box csdn-tracking-statistics" data-mod="popu_614" data-poputype="feed"  data-feed-show="false"  data-dsm="post">
+		<h4 class="text-truncate">
+			<a href="https://blog.csdn.net/jp413670706/article/details/52737282" target="_blank" strategy="BlogCommendFromQuerySearch_5">
+				<em>Redis</em><em>实现</em><em>分布式锁</em>原理与<em>实现</em>分析			</a>
+		</h4>
+		<p class="content">
+			<a href="https://blog.csdn.net/jp413670706/article/details/52737282" target="_blank" >
+				一、关于<em>分布式锁</em>
+
+
+关于<em>分布式锁</em>，可能绝大部分人都会或多或少涉及到。
+我举二个例子：
+场景一：从前端界面发起一笔支付请求，如果前端没有做防重处理，那么可能在某一个时刻会有二笔一样的单子...			</a>
+		</p>
+		<div class="info-box d-flex align-content-center">
+			<p>
+				<a class="avatar" src="https://blog.csdn.net/jp413670706" title="jp413670706" target="_blank">
+					<img src="https://avatar.csdn.net/A/A/4/3_jp413670706.jpg" alt="jp413670706" class="avatar-pic">
+					<span class="name">jp413670706</span>
+				</a>
+			</p>
+			<p>
+				<span class="date">2016-10-05 08:02:04</span>
+			</p>
+			<p>
+				<span class="read-num">阅读数：9432</span>
+			</p>
+		</div>
+	</div>
+					<div class="recommend-item-box csdn-tracking-statistics" data-mod="popu_614" data-poputype="feed"  data-feed-show="false"  data-dsm="post">
+		<h4 class="text-truncate">
+			<a href="https://blog.csdn.net/ugg/article/details/41894947" target="_blank" strategy="BlogCommendFromQuerySearch_6">
+				基于<em>Redis</em><em>实现</em><em>分布式锁</em>			</a>
+		</h4>
+		<p class="content">
+			<a href="https://blog.csdn.net/ugg/article/details/41894947" target="_blank" >
+				在很多互联网产品应用中，有些场景需要加锁处理，比如：秒杀，全局递增ID，楼层生成等等。大部分的解决方案是基于DB<em>实现</em>的，<em>Redis</em>为单进程单线程模式，采用队列模式将并发访问变成串行访问，且多客户端对R...			</a>
+		</p>
+		<div class="info-box d-flex align-content-center">
+			<p>
+				<a class="avatar" src="https://blog.csdn.net/ugg" title="ugg" target="_blank">
+					<img src="https://avatar.csdn.net/0/7/4/3_ugg.jpg" alt="ugg" class="avatar-pic">
+					<span class="name">ugg</span>
+				</a>
+			</p>
+			<p>
+				<span class="date">2014-12-12 16:33:57</span>
+			</p>
+			<p>
+				<span class="read-num">阅读数：166229</span>
+			</p>
+		</div>
+	</div>
+					<div class="recommend-item-box recommend-ad-box" id="a_d_feed_0"></div>
+			<script>
+				var width = $("div.recommend-box").outerWidth() - 48;
+				NEWS_FEED({
+					w: width,
+					h: 90,
+					showid: 'Afihld',
+					placeholderId: 'a_d_feed_0',
+					inject: 'define',
+					define: {
+						imagePosition: 'right',
+						imageBorderRadius: 0,
+						imageWidth: 120,
+						imageHeight: 90,
+						imageFill: 'clip',
+						displayImage: true,
+						displayTitle: true,
+						titleFontSize: 20,
+						titleFontColor: '#333',
+						titleFontFamily: 'Microsoft Yahei',
+						titleFontWeight: 'bold',
+						titlePaddingTop: 0,
+						titlePaddingRight: 0,
+						titlePaddingBottom: 10,
+						titlePaddingLeft: 0,
+						displayDesc: true,
+						descFontSize: 14,
+						descFontColor: '#6b6b6b',
+						descFontFamily: 'Microsoft Yahei',
+						paddingTop: 0,
+						paddingRight: 0,
+						paddingBottom: 0,
+						paddingLeft: 0,
+						backgroundColor: '#fff',
+						hoverColor: '#ca0c16'
+					}
+				})
+			</script>
+			<div class="recommend-item-box csdn-tracking-statistics" data-mod="popu_614" data-poputype="feed"  data-feed-show="false"  data-dsm="post">
+		<h4 class="text-truncate">
+			<a href="https://blog.csdn.net/qq_33666373/article/details/78870294" target="_blank" strategy="BlogCommendFromQuerySearch_7">
+				使用<em>Redis</em><em>实现</em><em>分布式锁</em>的原理			</a>
+		</h4>
+		<p class="content">
+			<a href="https://blog.csdn.net/qq_33666373/article/details/78870294" target="_blank" >
+				使用场景:
+在tomcat集群环境下,有任务调度,也就是定时任务
+同一时间多个tomcat执行同一个任务,如定时关单.
+如果有大量订单需要关闭,则每个tomcat都会执行相同数量的关单sql, ...			</a>
+		</p>
+		<div class="info-box d-flex align-content-center">
+			<p>
+				<a class="avatar" src="https://blog.csdn.net/qq_33666373" title="qq_33666373" target="_blank">
+					<img src="https://avatar.csdn.net/9/0/1/3_qq_33666373.jpg" alt="qq_33666373" class="avatar-pic">
+					<span class="name">qq_33666373</span>
+				</a>
+			</p>
+			<p>
+				<span class="date">2017-12-22 10:16:16</span>
+			</p>
+			<p>
+				<span class="read-num">阅读数：448</span>
+			</p>
+		</div>
+	</div>
+					<div class="recommend-item-box csdn-tracking-statistics" data-mod="popu_614" data-poputype="feed"  data-feed-show="false"  data-dsm="post">
+		<h4 class="text-truncate">
+			<a href="https://blog.csdn.net/z69183787/article/details/68485825" target="_blank" strategy="BlogCommendFromQuerySearch_8">
+				<em>分布式锁</em><em>实现</em>方案(<em>REDIS</em>,ZOOKEEPER,TAIR)			</a>
+		</h4>
+		<p class="content">
+			<a href="https://blog.csdn.net/z69183787/article/details/68485825" target="_blank" >
+				Zookeeper
+
+1、原生ZK方案
+
+Zookeeper中有一种节点叫做顺序节点，假如我们在/lock/目录下创建节3个点，ZooKeeper集群会按照提起创建的顺序来创建节点，节点分别为...			</a>
+		</p>
+		<div class="info-box d-flex align-content-center">
+			<p>
+				<a class="avatar" src="https://blog.csdn.net/z69183787" title="z69183787" target="_blank">
+					<img src="https://avatar.csdn.net/0/6/0/3_z69183787.jpg" alt="z69183787" class="avatar-pic">
+					<span class="name">z69183787</span>
+				</a>
+			</p>
+			<p>
+				<span class="date">2017-03-30 13:25:12</span>
+			</p>
+			<p>
+				<span class="read-num">阅读数：4871</span>
+			</p>
+		</div>
+	</div>
+					<div class="recommend-item-box csdn-tracking-statistics" data-mod="popu_614" data-poputype="feed"  data-feed-show="false"  data-dsm="post">
+		<h4 class="text-truncate">
+			<a href="https://blog.csdn.net/qq_32198277/article/details/78988305" target="_blank" strategy="BlogCommendFromQuerySearch_9">
+				架构师日记——基于<em>redis</em>的<em>分布式锁</em><em>实现</em>			</a>
+		</h4>
+		<p class="content">
+			<a href="https://blog.csdn.net/qq_32198277/article/details/78988305" target="_blank" >
+				很久之前有讲过并发编程中的锁    并发编程的锁机制：synchronized和lock
+。在单进程的系统中，当存在多个线程可以同时改变某个变量时，就需要对变量或代码块做同步，使其在修改这种变量时能够...			</a>
+		</p>
+		<div class="info-box d-flex align-content-center">
+			<p>
+				<a class="avatar" src="https://blog.csdn.net/qq_32198277" title="qq_32198277" target="_blank">
+					<img src="https://avatar.csdn.net/B/A/0/3_qq_32198277.jpg" alt="qq_32198277" class="avatar-pic">
+					<span class="name">qq_32198277</span>
+				</a>
+			</p>
+			<p>
+				<span class="date">2018-01-06 13:45:32</span>
+			</p>
+			<p>
+				<span class="read-num">阅读数：411</span>
+			</p>
+		</div>
+	</div>
+			            <div class="recommend-loading-box">
+                <img src='https://csdnimg.cn/release/phoenix/images/feedLoading.gif'>
+            </div>
+            <div class="recommend-end-box">
+                <p class="text-center">没有更多推荐了，<a href="https://blog.csdn.net/" class="c-blue c-blue-hover c-blue-focus">返回首页</a></p>
+            </div>
+        </div>
+    </main>
+    <aside>
+		    <div id="asideProfile" class="aside-box">
+    <h3 class="aside-title">个人资料</h3>
+    <div class="profile-intro d-flex">
+        <div class="avatar-box d-flex justify-content-center flex-column">
+            <a href="https://blog.csdn.net/zy_281870667">
+                <img src="https://avatar.csdn.net/F/F/3/3_zy_281870667.jpg" class="avatar_pic">
+            </a>
+        </div>
+        <div class="user-info d-flex justify-content-center flex-column">
+            <p class="name csdn-tracking-statistics tracking-click" data-mod="popu_379">
+                <a href="https://blog.csdn.net/zy_281870667" target="_blank" class="text-truncate" id="uid">zy_281870667</a>
+            </p>
+                    </div>
+            </div>
+    <div class="data-info d-flex item-tiling">
+                <dl class="text-center" title="133">
+                        <dt><a href="https://blog.csdn.net/zy_281870667?t=1">原创</a></dt>
+            <dd><a href="https://blog.csdn.net/zy_281870667?t=1"><span class="count">133</span></a></dd>
+                    </dl>
+        <dl class="text-center" title="83">
+            <dt>粉丝</dt>
+            <dd><span class="count" id="fan">83</span></dd>
+        </dl>
+        <dl class="text-center" title="45">
+            <dt>喜欢</dt>
+            <dd><span class="count">45</span></dd>
+        </dl>
+        <dl class="text-center" title="57">
+            <dt>评论</dt>
+            <dd><span class="count">57</span></dd>
+        </dl>
+    </div>
+    <div class="grade-box clearfix">
+        <dl>
+            <dt>等级：</dt>
+            <dd>
+                <a href="https://blog.csdn.net/home/help.html#level" title="6级,点击查看等级说明" target="_blank">
+                    <svg class="icon icon-level" aria-hidden="true">
+                        <use xlink:href="#csdnc-bloglevel-6"></use>
+                    </svg>
+                </a>
+            </dd>
+        </dl>
+        <dl>
+            <dt>访问：</dt>
+            <dd title="567653">
+                56万+            </dd>
+        </dl>
+        <dl>
+            <dt>积分：</dt>
+            <dd title="9388">
+                9388            </dd>
+        </dl>
+        <dl title="2570">
+            <dt>排名：</dt>
+            <dd>2570</dd>
+        </dl>
+    </div>
+        <div class="badge-box d-flex">
+        <span>勋章：</span>
+                <a class="icon-badge" title="专栏达人">
+            <svg class="icon" aria-hidden="true">
+                <use xlink:href="#csdnc-m-columns"></use>
+            </svg>
+            <div class="icon-arrow"></div>
+            <div class="grade-detail-box item1">
+                <div class="pos-box">
+                    <div class="left-box d-flex justify-content-center align-items-center flex-column">
+                        <svg class="icon" aria-hidden="true">
+                            <use xlink:href="#csdnc-m-columns"></use>
+                        </svg>
+                        <p>专栏达人</p>
+                    </div>
+                    <div class="right-box d-flex justify-content-center align-items-center">
+                        授予成功创建个人博客专栏的用户。专栏中添加五篇以上博文即可点亮！撰写博客专栏浓缩技术精华，专栏达人就是你！
+                    </div>
+                </div>
+            </div>
+        </a>
+                        <a class="icon-badge" title="持之以恒">
+            <svg class="icon" aria-hidden="true">
+                <use xlink:href="#csdnc-m-lasting"></use>
+            </svg>
+            <div class="icon-arrow"></div>
+            <div class="grade-detail-box item2">
+                <div class="pos-box">
+                    <div class="left-box d-flex justify-content-center align-items-center flex-column">
+                        <svg class="icon" aria-hidden="true">
+                            <use xlink:href="#csdnc-m-lasting"></use>
+                        </svg>
+                        <p>持之以恒</p>
+                    </div>
+                    <div class="right-box d-flex justify-content-center align-items-center">
+                        授予每个自然月内发布4篇或4篇以上原创或翻译IT博文的用户。不积跬步无以至千里，不积小流无以成江海，程序人生的精彩需要坚持不懈地积累！
+                    </div>
+                </div>
+            </div>
+        </a>
+                            </div>
+    </div>		    <div class="csdn-tracking-statistics mb8 box-shadow" data-pid="blog" data-mod="popu_4" style="height:250px;">
+    <div class="aside-content text-center" id="cpro_u2734133">
+        <!-- 投放代码 -->
+        <script type="text/javascript" src="//cee1.iteye.com/lgyyovfyh.js"></script>
+    </div>
+</div>
+		    <div id="asideNewArticle" class="aside-box">
+    <h3 class="aside-title">最新文章</h3>
+    <div class="aside-content">
+        <ul class="inf_list clearfix csdn-tracking-statistics tracking-click" data-mod="popu_382">
+                        <li class="clearfix">
+                <a href="https://blog.csdn.net/zy_281870667/article/details/80646224" target="_blank">zookeeper下载安装</a>
+            </li>
+                        <li class="clearfix">
+                <a href="https://blog.csdn.net/zy_281870667/article/details/80411547" target="_blank">VMware12 centos6无法联网</a>
+            </li>
+                        <li class="clearfix">
+                <a href="https://blog.csdn.net/zy_281870667/article/details/80395709" target="_blank">GitLab配置ssh key和gitlab双开</a>
+            </li>
+                        <li class="clearfix">
+                <a href="https://blog.csdn.net/zy_281870667/article/details/80173863" target="_blank">分布式全局唯一ID--SnowFlake算法</a>
+            </li>
+                        <li class="clearfix">
+                <a href="https://blog.csdn.net/zy_281870667/article/details/80145478" target="_blank">用Python更加了解微信好友</a>
+            </li>
+                    </ul>
+    </div>
+</div>
+		    <div id="asideColumn" class="aside-box">
+    <h3 class="aside-title">博主专栏</h3>
+    <div class="aside-content">
+        <ul class="column-box csdn-tracking-statistics tracking-click" data-mod="popu_520" >
+                            <li class="clearfix">
+                    <div class="img-box float-left">
+                        <a class="d-flex align-items-center" href="https://blog.csdn.net/column/details/gof-23design.html">
+                            <img src="https://img-blog.csdn.net/20160628113542979?imageView2/5/w/120/h/120" alt="">
+                        </a>
+                    </div>
+                    <div class="info">
+                        <p class="title"><a href="https://blog.csdn.net/column/details/gof-23design.html">Gof 设计模式</a></p>
+                        <div class="data">阅读量：<span>33063</span><span class="count">13 篇</span></div>
+                    </div>
+                </li>
+                            <li class="clearfix">
+                    <div class="img-box float-left">
+                        <a class="d-flex align-items-center" href="https://blog.csdn.net/column/details/15307.html">
+                            <img src="https://img-blog.csdn.net/20170419170957371?imageView2/5/w/120/h/120" alt="">
+                        </a>
+                    </div>
+                    <div class="info">
+                        <p class="title"><a href="https://blog.csdn.net/column/details/15307.html">MongoDB</a></p>
+                        <div class="data">阅读量：<span>19902</span><span class="count">8 篇</span></div>
+                    </div>
+                </li>
+                    </ul>
+    </div>
+    </div>
+		    <div id="asideCategory" class="aside-box flexible-box">
+    <h3 class="aside-title">个人分类</h3>
+    <div class="aside-content">
+        <ul>
+                        <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/category/2763703">
+                    javaSE                    <span class="count float-right">48篇</span>
+                </a>
+            </li>
+                        <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/category/2763715">
+                    Web框架                    <span class="count float-right">13篇</span>
+                </a>
+            </li>
+                        <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/category/2763719">
+                    ORM                    <span class="count float-right">6篇</span>
+                </a>
+            </li>
+                        <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/category/2763723">
+                    Spring                    <span class="count float-right">8篇</span>
+                </a>
+            </li>
+                        <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/category/5939173">
+                    javascript/jquery                    <span class="count float-right">12篇</span>
+                </a>
+            </li>
+                        <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/category/5980053">
+                    中间件/插件                    <span class="count float-right">18篇</span>
+                </a>
+            </li>
+                        <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/category/6043149">
+                    缓存/nosql                    <span class="count float-right">13篇</span>
+                </a>
+            </li>
+                        <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/category/6043506">
+                    数学/算法/设计模式                    <span class="count float-right">25篇</span>
+                </a>
+            </li>
+                        <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/category/6060360">
+                    版本控制/构建工具                    <span class="count float-right">20篇</span>
+                </a>
+            </li>
+                        <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/category/6068841">
+                    瞎扯淡系列                    <span class="count float-right">67篇</span>
+                </a>
+            </li>
+                        <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/category/6078437">
+                    linux                    <span class="count float-right">11篇</span>
+                </a>
+            </li>
+                        <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/category/6078613">
+                    DB                    <span class="count float-right">25篇</span>
+                </a>
+            </li>
+                        <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/category/6126120">
+                    apache/tomcat                    <span class="count float-right">5篇</span>
+                </a>
+            </li>
+                        <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/category/7387558">
+                    python                    <span class="count float-right">4篇</span>
+                </a>
+            </li>
+                    </ul>
+    </div>
+        <p class="text-center">
+        <a class="btn btn-link-blue flexible-btn" data-fbox="aside-archive">展开</a>
+    </p>
+    </div>
+		    <div id="asideArchive" class="aside-box flexible-box">
+    <h3 class="aside-title">归档</h3>
+    <div class="aside-content">
+        <ul class="archive-list">
+                        <!--归档统计-->
+            <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/month/2018/06">
+                    2018年6月                    <span class="count float-right">3篇</span>
+                </a>
+            </li>
+                        <!--归档统计-->
+            <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/month/2018/05">
+                    2018年5月                    <span class="count float-right">4篇</span>
+                </a>
+            </li>
+                        <!--归档统计-->
+            <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/month/2018/04">
+                    2018年4月                    <span class="count float-right">4篇</span>
+                </a>
+            </li>
+                        <!--归档统计-->
+            <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/month/2018/03">
+                    2018年3月                    <span class="count float-right">8篇</span>
+                </a>
+            </li>
+                        <!--归档统计-->
+            <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/month/2018/02">
+                    2018年2月                    <span class="count float-right">4篇</span>
+                </a>
+            </li>
+                        <!--归档统计-->
+            <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/month/2018/01">
+                    2018年1月                    <span class="count float-right">5篇</span>
+                </a>
+            </li>
+                        <!--归档统计-->
+            <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/month/2017/12">
+                    2017年12月                    <span class="count float-right">9篇</span>
+                </a>
+            </li>
+                        <!--归档统计-->
+            <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/month/2017/11">
+                    2017年11月                    <span class="count float-right">11篇</span>
+                </a>
+            </li>
+                        <!--归档统计-->
+            <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/month/2017/10">
+                    2017年10月                    <span class="count float-right">8篇</span>
+                </a>
+            </li>
+                        <!--归档统计-->
+            <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/month/2017/09">
+                    2017年9月                    <span class="count float-right">15篇</span>
+                </a>
+            </li>
+                        <!--归档统计-->
+            <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/month/2017/08">
+                    2017年8月                    <span class="count float-right">8篇</span>
+                </a>
+            </li>
+                        <!--归档统计-->
+            <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/month/2017/07">
+                    2017年7月                    <span class="count float-right">3篇</span>
+                </a>
+            </li>
+                        <!--归档统计-->
+            <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/month/2017/06">
+                    2017年6月                    <span class="count float-right">11篇</span>
+                </a>
+            </li>
+                        <!--归档统计-->
+            <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/month/2017/05">
+                    2017年5月                    <span class="count float-right">2篇</span>
+                </a>
+            </li>
+                        <!--归档统计-->
+            <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/month/2017/04">
+                    2017年4月                    <span class="count float-right">7篇</span>
+                </a>
+            </li>
+                        <!--归档统计-->
+            <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/month/2017/03">
+                    2017年3月                    <span class="count float-right">4篇</span>
+                </a>
+            </li>
+                        <!--归档统计-->
+            <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/month/2017/02">
+                    2017年2月                    <span class="count float-right">7篇</span>
+                </a>
+            </li>
+                        <!--归档统计-->
+            <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/month/2017/01">
+                    2017年1月                    <span class="count float-right">6篇</span>
+                </a>
+            </li>
+                        <!--归档统计-->
+            <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/month/2016/12">
+                    2016年12月                    <span class="count float-right">11篇</span>
+                </a>
+            </li>
+                        <!--归档统计-->
+            <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/month/2016/11">
+                    2016年11月                    <span class="count float-right">8篇</span>
+                </a>
+            </li>
+                        <!--归档统计-->
+            <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/month/2016/10">
+                    2016年10月                    <span class="count float-right">6篇</span>
+                </a>
+            </li>
+                        <!--归档统计-->
+            <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/month/2016/09">
+                    2016年9月                    <span class="count float-right">3篇</span>
+                </a>
+            </li>
+                        <!--归档统计-->
+            <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/month/2016/08">
+                    2016年8月                    <span class="count float-right">15篇</span>
+                </a>
+            </li>
+                        <!--归档统计-->
+            <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/month/2016/07">
+                    2016年7月                    <span class="count float-right">9篇</span>
+                </a>
+            </li>
+                        <!--归档统计-->
+            <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/month/2016/06">
+                    2016年6月                    <span class="count float-right">20篇</span>
+                </a>
+            </li>
+                        <!--归档统计-->
+            <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/month/2016/05">
+                    2016年5月                    <span class="count float-right">11篇</span>
+                </a>
+            </li>
+                        <!--归档统计-->
+            <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/month/2016/04">
+                    2016年4月                    <span class="count float-right">16篇</span>
+                </a>
+            </li>
+                        <!--归档统计-->
+            <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/month/2016/03">
+                    2016年3月                    <span class="count float-right">6篇</span>
+                </a>
+            </li>
+                        <!--归档统计-->
+            <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/month/2016/02">
+                    2016年2月                    <span class="count float-right">10篇</span>
+                </a>
+            </li>
+                        <!--归档统计-->
+            <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/month/2016/01">
+                    2016年1月                    <span class="count float-right">17篇</span>
+                </a>
+            </li>
+                        <!--归档统计-->
+            <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/month/2015/12">
+                    2015年12月                    <span class="count float-right">19篇</span>
+                </a>
+            </li>
+                        <!--归档统计-->
+            <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/month/2015/11">
+                    2015年11月                    <span class="count float-right">2篇</span>
+                </a>
+            </li>
+                        <!--归档统计-->
+            <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/month/2015/07">
+                    2015年7月                    <span class="count float-right">1篇</span>
+                </a>
+            </li>
+                        <!--归档统计-->
+            <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/month/2015/06">
+                    2015年6月                    <span class="count float-right">1篇</span>
+                </a>
+            </li>
+                        <!--归档统计-->
+            <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/month/2015/05">
+                    2015年5月                    <span class="count float-right">1篇</span>
+                </a>
+            </li>
+                        <!--归档统计-->
+            <li>
+                <a href="https://blog.csdn.net/zy_281870667/article/month/2014/12">
+                    2014年12月                    <span class="count float-right">3篇</span>
+                </a>
+            </li>
+                    </ul>
+    </div>
+        <p class="text-center">
+        <a class="btn btn-link-blue flexible-btn" data-fbox="aside-archive">展开</a>
+    </p>
+    </div>
+		<div id="asideFooter">
+
+		<div class="aside-box">
+						<script type="text/javascript" src="//cee1.iteye.com/mhzzpwgzj.js"></script>
+					</div>
+				<div class="aside-box">
+			<div class="persion_article">
+			</div>
+		</div>
+	</div>
+</aside>
+<script src="https://csdnimg.cn/pubfooter/js/publib_footer-1.0.3.js" data-isfootertrack="false" type="text/javascript"></script>
+<script>
+	$("a.flexible-btn").click(function(){
+		$(this).parents('div.aside-box').removeClass('flexible-box');
+		$(this).remove();
+	})
+</script>
+</div>
+<div class="mask-dark"></div>
+<div class="tool-box">
+	<ul class="meau-list">
+		<li>
+			<button class="btn-like " title="点赞">
+				<svg class="icon active" aria-hidden="true">
+					<use xlink:href="#csdnc-thumbsup-ok"></use>
+				</svg><svg class="icon no-active" aria-hidden="true">
+					<use xlink:href="#csdnc-thumbsup"></use>
+				</svg>
+				<p>0</p>
+			</button>
+		</li>
+		<li class="toc-container-box" id="liTocBox">
+			<button class="btn-toc" title="目录">
+				<svg class="icon" aria-hidden="true">
+					<use xlink:href="#csdnc-contents"></use>
+				</svg><br>目录
+			</button>
+			<div class="toc-container">
+				<div class="pos-box">
+					<div class="icon-arrow"></div>
+					<div class="scroll-box">
+						<div class="toc-box"></div>
+					</div>
+				</div>
+				<div class="opt-box">
+					<button class="btn-opt prev nomore" title="向上">
+						<svg class="icon" aria-hidden="true">
+							<use xlink:href="#csdnc-chevronup"></use>
+						</svg>
+					</button>
+					<button class="btn-opt next">
+						<svg class="icon" aria-hidden="true">
+							<use xlink:href="#csdnc-chevrondown"></use>
+						</svg>
+					</button>
+				</div>
+			</div>
+		</li>
+		<li>
+			<button class="btn-bookmark" title="收藏">
+				<svg class="icon active" aria-hidden="true">
+					<use xlink:href="#csdnc-bookmark-ok"></use>
+				</svg><svg class="icon no-active" aria-hidden="true">
+					<use xlink:href="#csdnc-bookmark"></use>
+				</svg><br>收藏
+			</button>
+		</li>
+		<li>
+			<a class="btn-comments" title="评论" href="#commentBox">
+				<svg class="icon" aria-hidden="true">
+					<use xlink:href="#csdnc-comments"></use>
+				</svg><br>评论
+			</a>
+		</li>
+				<li class="bdsharebuttonbox">
+			<a class="btn-comments bds_weixin" data-cmd="weixin" title="微信分享">
+				<svg class="icon" aria-hidden="true">
+					<use xlink:href="#csdnc-wechat"></use>
+				</svg><br>微信
+			</a>
+		</li>
+		<li class="bdsharebuttonbox">
+			<a class="btn-comments bds_tsina" data-cmd="tsina" title="微博分享">
+				<svg class="icon" aria-hidden="true">
+					<use xlink:href="#csdnc-weibo"></use>
+				</svg><br>微博
+			</a>
+		</li>
+		<li class="bdsharebuttonbox">
+			<a class="btn-comments bds_qzone" data-cmd="qzone" title="QQ分享">
+				<svg class="icon" aria-hidden="true">
+					<use xlink:href="#csdnc-qq"></use>
+				</svg><br>QQ
+			</a>
+		</li>
+	</ul>
+</div>
+<script>window._bd_share_config = { "common": { "bdSnsKey": {}, "bdText": "", "bdMini": "1", "bdMiniList": false, "bdPic": "", "bdStyle": "0", "bdSize": "16" }, "share": {} }; with (document) 0[(getElementsByTagName('head')[0] || body).appendChild(createElement('script')).src = 'https://csdnimg.cn/static/api/js/share.js?v=89860594'];</script>
+<script>
+    var recommendCount = 9;
+    recommendCount = recommendCount > 1 ? (recommendCount + (recommendCount>6 ? 2 : 1)) : recommendCount;
+    var articleTit = "分布式锁之redis实现";
+    var ChannelId = 17;
+    var articleId = "80558568";
+    var commentscount = 0;
+    var islock = false;
+    var curentUrl = "https://blog.csdn.net/zy_281870667/article/details/80558568";
+    var myUrl = "https://my.csdn.net/";
+    //1禁止评论，2正常
+    var commentAuth = 2;
+    //百度搜索
+    var baiduKey = "";
+    var needInsertBaidu = true;
+</script>
+<script src="https://csdnimg.cn/public/sandalstrap/1.3/js/sandalstrap.min.js"></script>
+<script src="https://csdnimg.cn/release/phoenix/vendor/pagination/paging.js"></script>
+<script src='https://csdnimg.cn/public/common/gotop/js/goTop-v1.0.min.js?v201803151422'></script>
+<script>
+    GoTop({
+        right: 8,
+        hasReport: true,
+        reportFun: function() {
+            showReport(false,"分布式锁之redis实现");
+        }
+    })
+</script>
+<script src="https://csdnimg.cn/release/phoenix/template/js/common-bd54b21308.min.js"></script>
+<script src="https://csdnimg.cn/release/phoenix/template/js/detail-f35b0a5ad1.min.js"></script>
+<script src="https://csdnimg.cn/release/phoenix/themes/skin-yellow/skin-yellow-22f3069ef3.min.js"></script>
+</body>
+<div class="box-box-default">
+    <a class="btn-remove">
+        关闭
+    </a>
+    <script type="text/javascript" src="//cee1.iteye.com/mhzzjepzz.js"></script>
+</div>
+<div class="box-box-large">
+    <a class="btn-remove">
+        关闭
+    </a>
+    <script type="text/javascript" src="//cee1.iteye.com/idvveasfs.js"></script>
+</div>
+</html>

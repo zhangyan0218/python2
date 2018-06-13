@@ -26,6 +26,7 @@ all_article_url = []
 totalblog = 0
 errorNumber = 0
 successNumber = 0
+blog_url_pre = "https://blog.csdn.net/zy_281870667/article/details/"
 
 '''
 获取国内高匿IP:PORT
@@ -46,7 +47,6 @@ def get_max_pageNumber():
 	resppnse = urllib2.urlopen(req)
 	html = resppnse.read().decode('UTF-8')
 
-	# html = open('csdn.html','r').read()
 	all_page = re.findall(r'listTotal = \d+', html)
 	article_number = 0
 	if all_page:
@@ -62,7 +62,7 @@ def get_all_article():
 	article_reg = re.compile(r'data-articleid="(\d+)"')
 
 	max_pageNumber = get_max_pageNumber()
-	''' 获取指定页码下的所有文章ID '''
+
 	for i in range(max_pageNumber):
 		req = urllib2.Request('https://blog.csdn.net/zy_281870667/article/list/%s' % (i + 1))
 		req.add_header("User-Agent", "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1; Trident/4.0)")
@@ -70,7 +70,7 @@ def get_all_article():
 		html = content.read().decode('utf-8')
 		page_articles = re.findall(article_reg, html)
 		if len(page_articles) > 0:
-			''' 所有文章id '''
+			' 所有文章id '
 			for o in page_articles:
 				totalblog += 1
 				url = 'https://blog.csdn.net/zy_281870667/article/details/%s' % (o)
@@ -89,7 +89,7 @@ def brush(url):
 	opener = urllib2.build_opener(proxy_support, urllib2.HTTPHandler)
 	urllib2.install_opener(opener)
 
-	req = urllib2.Request(url)
+	req = urllib2.Request(blog_url_pre + url)
 	req.add_header("User-Agent", user_agent)
 
 	context = ssl._create_unverified_context()
@@ -97,12 +97,10 @@ def brush(url):
 		c = urllib2.urlopen(req, timeout=3,context=context)
 	except Exception as e:
 		errorNumber += 1
-		if errorNumber % 30 == 0 :
-			print(' error! %s' % (errorNumber), e)
+		print(' error! %s' % (errorNumber), e,url)
 	else:
 		successNumber +=1
-		if successNumber % 100 == 0 :
-			print('success! %s' % (++successNumber), time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
+		print('success! %s' % (++successNumber), time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())),url)
 	sem.release()
 
 
@@ -112,9 +110,10 @@ if __name__ == "__main__":
 	print "开始刷访问量！"
 	print "共计博客个数为 "
 	print(totalblog)
-	sem = threading.BoundedSemaphore(3)
+	sem = threading.BoundedSemaphore(1)
 	while 1:
-		randomUrl = random.choice(all_article_url)
-		sem.acquire()
-		T = threading.Thread(target=brush, args=(randomUrl,))
-		T.start()
+		for url in all_article_url:
+			sem.acquire()
+			T = threading.Thread(target=brush, args=(url,))
+			T.start()
+		time.sleep(random.randint(30,50))

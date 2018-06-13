@@ -1,0 +1,6 @@
+2018-06-13 12:33:16,826 - brushLogger_fail - ERROR - (' error! 1', SSLError('The read operation timed out',), '80173863')
+2018-06-13 12:33:26,924 - brushLogger_fail - ERROR - (' error! 2', SSLError('The read operation timed out',), '79946919')
+2018-06-13 12:33:37,019 - brushLogger_fail - ERROR - (' error! 3', SSLError('The read operation timed out',), '73650668')
+2018-06-13 12:33:47,122 - brushLogger_fail - ERROR - (' error! 4', SSLError('The read operation timed out',), '80646149')
+2018-06-13 12:33:57,220 - brushLogger_fail - ERROR - (' error! 5', SSLError('The read operation timed out',), '80646224')
+2018-06-13 12:34:07,318 - brushLogger_fail - ERROR - (' error! 6', SSLError('The read operation timed out',), '80646224')
