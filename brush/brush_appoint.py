@@ -1,12 +1,12 @@
 # -*- coding:utf-8 -*-
 import re
 import urllib2
+import cookielib
 import random
-import threading
 import time
 import ssl
 import logging
-from Logger import Logger
+from brush.log.Logger import Logger
 import sys
 
 reload(sys)
@@ -30,7 +30,6 @@ user_agent_list = [
 ]
 blog_url_pre = "https://blog.csdn.net/zy_281870667/article/details/"
 proxy_list = []
-proxy_ip = []
 blog_id_list = []
 errorNumber = 0
 successNumber = 0
@@ -43,12 +42,10 @@ log_html = Logger(logName='brushLogger_html',logLevel=logging.DEBUG,logFilePath=
 '''
 def get_proxy_ip():
 	global proxy_list
-	global proxy_ip
 	lines = open('ip.txt', 'r').readlines()
 	for line in lines:
 		proxy = line.strip('\n')
 		proxy_list.append(proxy)
-		proxy_ip.append(proxy[0:proxy.index(":")])
 
 ''' 获取指定的文章id '''
 def get_blog_id_list():
@@ -64,16 +61,17 @@ def brush(url):
 	proxy_ip = random.choice(proxy_list)
 
 	proxy_support = urllib2.ProxyHandler({'https': proxy_ip})
-	opener = urllib2.build_opener(proxy_support, urllib2.HTTPHandler)
+	cookie_support = urllib2.HTTPCookieProcessor(cookielib.CookieJar())
+	opener = urllib2.build_opener(proxy_support, cookie_support, urllib2.HTTPHandler)
 	urllib2.install_opener(opener)
 
 	req = urllib2.Request(blog_url_pre + url)
-	req = addHeader(req)
+	req = addHeader(req,proxy_ip[0:proxy_ip.index(":")])
 
 	context = ssl._create_unverified_context()
 	html = ""
 	try:
-		response = urllib2.urlopen(req, timeout=10, context=context)
+		response = urllib2.urlopen(req, timeout=600, context=context)
 		html = response.read().decode('UTF-8')
 	except Exception as e:
 		errorNumber += 1
@@ -91,18 +89,18 @@ def brush(url):
 				 , url))
 	if not html.strip():
 		log_html.debug(html)
-	# sem.release()
 
 '给request添加Header头'
-def addHeader(req):
+def addHeader(req,proxy_ip):
 	req.add_header("User-Agent", random.choice(user_agent_list))
 	req.add_header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
 	req.add_header("Accept-Encoding", "gzip, deflate")
 	req.add_header("Accept-Language", "zh-cn,zh;q=0.8,en-us;q=0.5,en;q=0.3")
 	req.add_header("Connection", "keep-alive")
-	req.add_header("X-Forwarded-For", random.choice(proxy_ip))
+	req.add_header("X-Forwarded-For", proxy_ip)
 	req.add_header("Content-Length", "31")
 	req.add_header("Content-Type", "application/x-www-form-urlencoded")
+	req.add_header("Referer", "https://blog.csdn.net")
 	return req
 
 if __name__ == "__main__":
@@ -112,15 +110,3 @@ if __name__ == "__main__":
 	while 1:
 		for blog_id in blog_id_list:
 			brush(blog_id)
-
-if __name__ == "__main2__":
-	get_proxy_ip()
-	get_blog_id_list()
-
-	sem = threading.BoundedSemaphore(1)
-	while 1:
-		for blog_id in blog_id_list:
-			sem.acquire()
-			T = threading.Thread(target=brush, args=(blog_id,))
-			T.start()
-			time.sleep(random.randint(5, 10))
