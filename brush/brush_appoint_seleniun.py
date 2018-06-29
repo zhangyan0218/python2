@@ -24,6 +24,7 @@ log_success = Logger(logName='brushLogger_success', logLevel=logging.DEBUG,
 log_fail = Logger(logName='brushLogger_fail', logLevel=logging.DEBUG, logFilePath='log/brush_fail.log').getlog()
 log_html = Logger(logName='brushLogger_html', logLevel=logging.DEBUG, logFilePath='log/brush_html.log').getlog()
 
+browser = webdriver.Chrome()
 
 ''' 获取指定的文章id '''
 def get_blog_id_list():
@@ -34,30 +35,30 @@ def get_blog_id_list():
 
 
 ''' 根据指定的url去爬 '''
-def brush(url,browser):
+def brush(url):
 	global errorNumber, successNumber
 
-	readNumber = 0
+	readNumber = None
 	try:
-		readNumber = brush_selenium(blog_url_pre + url, browser)
+		browser.get(blog_url_pre + url)
+		readNumber = browser.find_element_by_class_name('read-count').text.encode(
+			'unicode-escape').decode('string_escape')
 	except Exception as e:
 		errorNumber += 1
 		log_fail.error((' error! %s' % (errorNumber), e, url))
 	else:
 		successNumber += 1
-		if (readNumber != None and readNumber >0):
+		if readNumber != None:
 			log_success.debug(
 				('success! %s' % (++successNumber), time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
-				 , url,'阅读数：', readNumber))
+				 , url, 'read-count:',re.findall(r'(\d+)\b',readNumber)[2]))
 		else:
 			log_success.debug(
 				('success! %s' % (++successNumber), time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
 				 , url))
-		browser.close()
 
-
-def brush_selenium(url,browser):
-	browser.get(url)
+def login_csdn():
+	browser.get(blog_url_pre+'73650668')
 
 	elem = browser.find_element_by_class_name("login-user__active")
 	if None != elem:
@@ -68,20 +69,16 @@ def brush_selenium(url,browser):
 		elem.send_keys(userName)
 		elem = browser.find_element_by_id("password")
 		elem.send_keys(passWord)
-		elem = browser.find_element_by_class_name("logging")
-		elem.click()
-
-		time.sleep(1)
-		return browser.find_element_by_class_name('read-count').text()
+		elem = browser.find_element_by_class_name("logging").click()
 
 if __name__ == "__main__":
 	get_blog_id_list()
-	browser = webdriver.Chrome()
+	login_csdn()
 
 	while 1:
 		for blog_id in blog_id_list:
 			try:
-				brush(blog_id,browser)
+				brush(blog_id)
 			except Exception as e:
 				log_fail.error(e)
 				time.sleep(random.randint(30,60))
